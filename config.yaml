@@ -1,0 +1,46 @@
+# Created on 11 Nov. 2024
+# @OH Abdoul Djalil
+#--------- Do not editing these lines ----------#
+config_file_path: config.yaml # config file path
+
+availableThresholds:
+  - global
+  - adaptive-mean
+  - adaptive-gaussian
+  - otsu
+#----------------------------------------------#
+
+
+#-------- Start editing here ----------------#
+# threshold methods and parameters
+thresholdMethod: otsu  # choose among these methods: 'global', 'adaptive-mean', 'adaptive-gaussian', 'Otsu'
+useThrWindow: True      # Choisir True pour utiliser thr_window, False pour utiliser thr_direct
+manualThrValue: 0      # choosing a specifique threshold value
+blockSize: 11            # zone locale zone size. must be odd number > 1
+C: 2                     # improve the contrast between areas of interest.
+
+# parameters
+params:
+  depth: True          # 'True' if using depth image or 'False' if not
+  meanValue: False     # Average of the depth values
+  normalization: False # normalization
+  windowSize: 15       # sliding window size to find threshold value. please try several value until you get good one for a specific dataset.
+
+
+# data paths
+path2RAWdata: ./                                # path to RAW images from canon camera
+dataPath: ./Pop_50025-Depth/DepthAnything/      # path to depth images 
+phenologyDir: Floraison                         # directory to iter on or to save specific phenology images 
+
+
+
+# threshold parameters
+# threshold:
+# thresholdMode:
+  # useThrWindow: True  # Choisir True pour utiliser thr_window, False pour utiliser thr_direct
+  # direct: False           # maximum residual directly (excluding intensity 0)
+  # window: True            # threshold using the max sum of residuals over a sliding window
+  # autoThreshold: True     # using automatic threshold
+  # manualThreshold: False  # using manual threshold
+# thrChoice: autoThreshold  # choose 'autoThreshold' or 'manualThreshold'
+# manualThrValue: 113       # choosing a specifique threshold value 

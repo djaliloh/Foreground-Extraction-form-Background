@@ -1,5 +1,6 @@
 import argparse
 import glob
+import time
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,60 +35,76 @@ def histo_calculation(params):
             img = cv.imread(img_path, cv.IMREAD_UNCHANGED)
             if img is None:
                 continue
-            
-            img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-            img_hist = cv.calcHist([img_gray], [0], None, [256], [0, 256])
+
+            # if img_gray.ndim == 3:
+            #     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+            # print('ICI->',img_gray.ndim)
+            img_hist = cv.calcHist([img], [0], None, [256], [0, 256])
             img_hist /= img_hist.sum()  # Normalize histogram
             entire_dir_hist.append(img_hist)
     
     return entire_dir_hist
-
-
-def thresholding(params, thr_direct=None, thr_window=None): 
-
-    whichThr      = params['threshold']['thresholdMode']
-    isdirect      = params['threshold']['thresholdMode']['direct']
-    thr_value     = params['threshold']['manualThrValue'] 
-    thrChoice     = params['threshold']['thrChoice']
+    
+def thresholding(params, thr_direct=None, thr_window=None):
+    
+    thr_value     = params['manualThrValue'] 
     normalization = params['params']['normalization']
     mean_value    = params['params']['meanValue']
     phenology_pth = params['phenologyDir']
     path2depthmap = params['dataPath']
+    thr_method    = params['thresholdMethod']
+    available_thr = params['availableThresholds']
     
-    # print(thr_value, '->', whichThr["autoThreshold"])
-    # print('->',whichThr)
-    # exit(0)
-    for idx, img in enumerate(glob.glob(join_paths(path2depthmap, phenology_pth, "*"))):
-        depth_map = cv.imread(img, cv.IMREAD_UNCHANGED)
-        h, w, _ = depth_map.shape
-        image_name = os.path.basename(img).split('.')[0]
-
+    start_time = time.time()
+    for idx, img_path in enumerate(glob.glob(join_paths(path2depthmap, phenology_pth, "*"))):
+        depth_map = cv.imread(img_path, cv.IMREAD_UNCHANGED)
         if depth_map is None:
-            raise ValueError(f"Error loading image: {img}")
+            raise ValueError(f"Error loading image: {img_path}")
         
+        if depth_map.ndim == 3:
+            depth_map = cv.cvtColor(depth_map, cv.COLOR_BGR2GRAY)
+
+        # Normalization
         if normalization:
-            depth_map = cv.normalize(depth_map, None, 0, 255, cv.NORM_MINMAX)
-        
-        # Average of the depth values
-        if mean_value:  
-            thr_value = np.mean(depth_map)
+            depth_map = cv.normalize(depth_map, None, 0, 255, cv.NORM_MINMAX).astype(np.uint8)
+
+        # mean value
+        thr_value = np.mean(depth_map) if mean_value else params['manualThrValue']
+        if mean_value:
             print(f"Mean value threshold: {thr_value}")
+        # print(f"Mean value threshold: {thr_value}" if mean_value else f"Manual threshold value: {params['manualThrValue']}")
 
-        # Using automatic manual or threshold
-        if thrChoice == "autoThreshold" and whichThr["autoThreshold"]:
-            thr_value = thr_direct if isdirect else thr_window
-            
-        elif thrChoice == "manualThreshold" and whichThr["manualThreshold"]:    
-            thr_value = thr_value
+        selected_thr = None
+        thresh_type = None
 
-        # Seuillage
-        _, high_intensity_pixels = cv.threshold(depth_map, thr_value, 255, cv.THRESH_BINARY)
+        if thr_method == 'global' and 'global' in available_thr:
+            selected_thr = thr_value if not mean_value and not thr_window else (thr_window if params['useThrWindow'] else thr_direct)
+            _, thresh_type = cv.threshold(depth_map, selected_thr, 255, cv.THRESH_BINARY)
+            # print("select ->", selected_thr)
+            # print('window', params['useThrWindow'])
+        
+        elif thr_method == 'adaptive-mean' and 'adaptive-mean' in available_thr:
+            thresh_type = cv.adaptiveThreshold(depth_map, 255, cv.ADAPTIVE_THRESH_MEAN_C, 
+                cv.THRESH_BINARY, params['blockSize'], params['C'])
 
-        # save in directory
-        maskdir = make_dirs(join_paths(go_up_levels(path2depthmap, 2), "mask_", phenology_pth))
-        mask_name = f"{image_name}_{thr_value}_high_intensity_pixels.png"
-        cv.imwrite(os.path.join(maskdir, mask_name), high_intensity_pixels)
+        elif thr_method == 'adaptive-gaussian' and 'adaptive-gaussian' in available_thr:
+            thresh_type = cv.adaptiveThreshold(depth_map, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv.THRESH_BINARY, params['blockSize'], params['C'])
+
+        elif thr_method == 'otsu' and 'otsu' in available_thr:
+            _, thresh_type = cv.threshold(depth_map, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+
+        else:
+            raise ValueError(f"Threshold method '{thr_method}' not recognized or not available.")
+
+
+        # save mask in directory
+        image_name = os.path.basename(img_path).split('.')[0]
+        maskdir = make_dirs(join_paths(go_up_levels(path2depthmap, 2), f"mask_{thr_method}", phenology_pth))
+        mask_name = f"{image_name}_{selected_thr}_{thr_method}_.png" if selected_thr is not None else f"{image_name}_{thr_method}_.png"
+        cv.imwrite(join_paths(maskdir, mask_name), thresh_type)
         print(f"mask_{idx+1} saved !")
+    print("--- %s seconds ---" % (time.time() - start_time))
 
 
 def main():
